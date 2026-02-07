@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Una sencilla aplicación de lista de tareas para aprender desarrollo web."
+    />
+    <title>Mi Primera App - Lista de Tareas</title>
+    <link rel="stylesheet" href="style.css" />
+    <!-- Importamos una fuente bonita de Google Fonts -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <main class="app-container">
+      <header>
+        <h1>Mis Tareas</h1> 
+        <h2>Sergi Garceran Núñez</h2>
+        <p>Organiza tu día paso a paso</p>
+      </header>
+
+      <section class="input-group">
+        <input
+          type="text"
+          id="taskInput"
+          placeholder="¿Qué necesitas hacer hoy?"
+          autofocus
+        />
+        <button id="addBtn">Agregar</button>
+      </section>
+
+      <div class="filters">
+          <button class="filter-btn active" data-filter="all">Todas</button>
+          <button class="filter-btn" data-filter="pending">Pendientes</button>
+          <button class="filter-btn" data-filter="completed">Completadas</button>
+      </div>
+
+      <ul id="taskList" class="task-list">
+        <!-- Las tareas aparecerán aquí -->
+      </ul>
+
+      <!-- Mensaje vacío inicial -->
+      <div id="emptyState" class="empty-state">
+        <p>¡Todo limpio! Agrega una tarea para empezar.</p>
+      </div>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
