@@ -1,93 +1,115 @@
-// Importamos la conexión a la base de datos
-import { db } from './firebase-config.js';
-// Importamos las funciones mágicas de Firestore
+// app.js - VERSIÓN LIMPIA Y FINAL
+import { db, auth, provider } from './firebase-config.js';
 import { 
-    collection, 
-    addDoc, 
-    onSnapshot, 
-    deleteDoc, 
-    doc, 
-    updateDoc,
-    query, 
-    orderBy 
+    collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query, orderBy 
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { 
+    signInWithPopup, signOut, onAuthStateChanged 
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-// Esperamos a que el contenido de la página cargue
+// Función auxiliar para fechas (Fuera del DOMContentLoaded)
+function formatearFecha(timestamp) {
+    if (!timestamp) return '';
+    const fecha = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    return fecha.toLocaleDateString('es-ES', { 
+        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' 
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. Seleccionamos los elementos del HTML que vamos a controlar
+    // 1. REFERENCIAS DOM
     const taskInput = document.getElementById('taskInput');
     const addBtn = document.getElementById('addBtn');
     const taskList = document.getElementById('taskList');
     const emptyState = document.getElementById('emptyState');
     const filterBtns = document.querySelectorAll('.filter-btn');
     
-    // Referencia a la colección de tareas en la base de datos
-    const tasksCollection = collection(db, "tareas");
+    // Referencias de Login
+    const loginScreen = document.getElementById('loginScreen');
+    const appScreen = document.getElementById('appScreen');
+    const loginBtn = document.getElementById('loginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const userPhoto = document.getElementById('userPhoto');
+    const userName = document.getElementById('userName');
 
-    // Función reutilizable para crear la fila de la tarea
-    function createTaskElement(id, texto, completada = false) {
-        // 1. Crear el elemento li
+    const tasksCollection = collection(db, "tareas");
+    let unsubscribe = null; // Para detener la escucha de tareas al salir
+
+    // 2. FUNCIONES PRINCIPALES
+
+    function createTaskElement(id, data) {
         const li = document.createElement('li');
         li.className = 'task-item';
-        // Guardamos el ID de Firebase en el elemento HTML para saber quién es
-        li.dataset.id = id; 
+        li.dataset.id = id;
         
-        if (completada) {
-            li.classList.add('completed');
+        if (data.completada) li.classList.add('completed');
+
+        // Textos
+        const fechaCreacion = formatearFecha(data.fechaCreacion);
+        const infoCreacion = `Creado por ${data.creadaPorNombre || 'Anónimo'} el ${fechaCreacion}`;
+        let infoCompletado = '';
+        
+        if (data.completada && data.completadaPor) {
+            infoCompletado = `<br>✅ Completado por ${data.completadaPor} el ${formatearFecha(data.fechaCompletada)}`;
         }
 
-        // 2. Insertar HTML
         li.innerHTML = `
-            <span class="task-content">${texto}</span>
+            <div class="task-info">
+                <span class="task-content">${data.texto}</span>
+                <small class="task-creator">
+                    ${infoCreacion}
+                    <span class="completed-info">${infoCompletado}</span>
+                </small>
+            </div>
             <div class="action-buttons">
-                <button class="delete-btn" aria-label="Borrar">🗑️</button>
+                <button class="delete-btn" aria-label="Borrar">✕</button>
             </div>
         `;
-        
-        // --- EVENTOS (Ahora hablan con Firestore) ---
 
-        // BORRAR TAREA
+        // Eventos de la tarea
         const deleteBtn = li.querySelector('.delete-btn');
+        
+        // BORRAR
         deleteBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
+            if(!confirm("¿Seguro que quieres borrarla?")) return; // Mini seguridad extra
+            
             li.classList.add('fall');
-
-            // Importante: No borramos del HTML aquí.
-            // Le decimos a Firebase que borre. 
-            // Cuando Firebase lo haga, el "oyente" (onSnapshot) actualizará la lista.
             try {
                 await deleteDoc(doc(db, "tareas", id));
             } catch (error) {
-                console.error("Error al borrar:", error);
-                alert("Hubo un error al borrar la tarea");
+                console.error(error);
             }
         });
 
-        // COMPLETAR TAREA (Toggle)
+        // COMPLETAR
         li.addEventListener('click', async () => {
-            // Le decimos a Firebase que cambie SOLO el campo 'completada'
             try {
                 const nuevoEstado = !li.classList.contains('completed');
-                await updateDoc(doc(db, "tareas", id), {
-                    completada: nuevoEstado
-                });
+                const user = auth.currentUser;
+                const updateData = { completada: nuevoEstado };
+
+                if (nuevoEstado) {
+                    updateData.completadaPor = user.displayName;
+                    updateData.fechaCompletada = new Date();
+                } else {
+                    updateData.completadaPor = null;
+                    updateData.fechaCompletada = null;
+                }
+                await updateDoc(doc(db, "tareas", id), updateData);
             } catch (error) {
-                console.error("Error al actualizar:", error);
+                console.error(error);
             }
         });
 
-        // EDITAR TAREA (Doble Click)
+        // EDITAR
         li.addEventListener('dblclick', async () => {
-             const taskContent = li.querySelector('.task-content');
-             const nuevoTexto = prompt("Editar tarea:", taskContent.innerText);
-             
-             if (nuevoTexto !== null && nuevoTexto.trim() !== "") {
+             const nuevoTexto = prompt("Editar tarea:", data.texto);
+             if (nuevoTexto && nuevoTexto.trim() !== "") {
                  try {
-                     await updateDoc(doc(db, "tareas", id), {
-                         texto: nuevoTexto
-                     });
+                     await updateDoc(doc(db, "tareas", id), { texto: nuevoTexto });
                  } catch (error) {
-                     console.error("Error al editar:", error);
+                     console.error(error);
                  }
              }
         });
@@ -95,32 +117,28 @@ document.addEventListener('DOMContentLoaded', () => {
         return li;
     }
 
-    // 2. Función para añadir una nueva tarea
     async function addTask() {
         const taskText = taskInput.value.trim();
-        if (taskText === "") {
-            alert("Por favor escribe una tarea 🎉");
-            return;
-        }
+        if (taskText === "") return;
 
         try {
-            // Guardamos en Firebase (Magia ✨)
+            const user = auth.currentUser;
             await addDoc(tasksCollection, {
                 texto: taskText,
                 completada: false,
-                fechaCreacion: new Date() // Para ordenar luego
+                fechaCreacion: new Date(),
+                creadaPorNombre: user.displayName,
+                creadaPorEmail: user.email,
+                creadaPorFoto: user.photoURL
             });
-            
-            // Limpiamos el input
             taskInput.value = "";
             taskInput.focus();
         } catch (error) {
-            console.error("Error al añadir tarea: ", error);
-            alert("Error al guardar en la nube");
+            console.error("Error al añadir:", error);
+            alert("Error al guardar: " + error.message);
         }
     }
 
-    // 3. Función auxiliar para mostrar/ocultar el mensaje de lista vacía
     function checkEmptyState() {
         if (taskList.children.length === 0) {
             emptyState.classList.remove('hidden');
@@ -129,80 +147,81 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // 4. Escuchamos los eventos (Clicks y Teclas)
-    
-    // Al hacer clic en el botón "Agregar"
-    addBtn.addEventListener('click', addTask);
-
-    // Al presionar la tecla "Enter" en el input
-    taskInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            addTask();
-        }
-    });
-
     function applyFilter() {
-        // 1. Averiguar qué filtro está activo AHORA mismo
         const activeBtn = document.querySelector('.filter-btn.active');
+        if(!activeBtn) return;
         const filterValue = activeBtn.getAttribute('data-filter');
-
-        // 2. Recorrer todas las tareas y decidir
         const tasks = document.querySelectorAll('.task-item');
         
         tasks.forEach(task => {
             const isCompleted = task.classList.contains('completed');
-
-            // Lógica de decisión
             let shouldShow = false;
-            if (filterValue === 'all') {
-                shouldShow = true;
-            } else if (filterValue === 'pending' && !isCompleted) {
-                shouldShow = true;
-            } else if (filterValue === 'completed' && isCompleted) {
-                shouldShow = true;
-            }
-
-            // Aplicar la decisión
-            task.style.display = shouldShow ? 'flex' : 'none';
             
-            // Extra: Si la acabamos de crear con animación (slideIn), 
-            // a veces hay conflictos visuales, pero esto suele bastar.
+            if (filterValue === 'all') shouldShow = true;
+            else if (filterValue === 'pending' && !isCompleted) shouldShow = true;
+            else if (filterValue === 'completed' && isCompleted) shouldShow = true;
+
+            task.style.display = shouldShow ? 'flex' : 'none';
         });
-        
-        // 3. Revisar si con este filtro la lista parece vacía
-        // (Opcional, pero queda pro: "No hay tareas completadas")
     }
 
-    // 3. OYENTE EN TIEMPO REAL (El corazón de la app)
-    // Esto sustituye a loadData(). Se ejecuta AUTOMÁTICAMENTE 
-    // cada vez que algo cambia en la base de datos (incluso si lo cambia otra persona).
-    const q = query(tasksCollection, orderBy("fechaCreacion", "desc"));
-    
-    onSnapshot(q, (snapshot) => {
-        // 1. Limpiamos la lista actual para no duplicar
-        taskList.innerHTML = "";
-        
-        // 2. Recorremos los documentos que nos da Firebase
-        snapshot.forEach((doc) => {
-            const data = doc.data();
-            const li = createTaskElement(doc.id, data.texto, data.completada);
-            taskList.appendChild(li);
-        });
+    // 3. EVENTOS GLOBALES
 
-        // 3. Actualizamos vista vacía y filtros
-        checkEmptyState();
-        applyFilter(); // Si tenías implementado el filtro
+    addBtn.addEventListener('click', addTask);
+    taskInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') addTask();
     });
 
-    // 5. Filtrado de Tareas
     filterBtns.forEach(btn => {
         btn.addEventListener('click', () => {
-            // Solo cambiamos la clase visual
             document.querySelector('.filter-btn.active').classList.remove('active');
             btn.classList.add('active');
-            
-            // Y llamamos a la función maestra
             applyFilter();
         });
     });
+
+    // 4. AUTENTICACIÓN
+
+    loginBtn.addEventListener('click', async () => {
+        try {
+            await signInWithPopup(auth, provider);
+        } catch (error) {
+            console.error(error);
+            alert("Error login: " + error.message);
+        }
+    });
+
+    logoutBtn.addEventListener('click', async () => {
+        await signOut(auth);
+    });
+
+    onAuthStateChanged(auth, (user) => {
+        if (user) {
+            // Entramos
+            loginScreen.classList.add('hidden');
+            appScreen.classList.remove('hidden');
+            userName.innerText = user.displayName;
+            userPhoto.src = user.photoURL;
+            cargarTareas();
+        } else {
+            // Salimos
+            appScreen.classList.add('hidden');
+            loginScreen.classList.remove('hidden');
+            taskList.innerHTML = "";
+            if(unsubscribe) unsubscribe(); // Parar de escuchar datos
+        }
+    });
+
+    function cargarTareas() {
+        const q = query(tasksCollection, orderBy("fechaCreacion", "desc"));
+        unsubscribe = onSnapshot(q, (snapshot) => {
+            taskList.innerHTML = "";
+            snapshot.forEach((doc) => {
+                const li = createTaskElement(doc.id, doc.data());
+                taskList.appendChild(li);
+            });
+            checkEmptyState();
+            applyFilter();
+        });
+    }
 });

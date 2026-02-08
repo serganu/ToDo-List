@@ -227,3 +227,75 @@ button#addBtn:active {
     transform: translateY(8rem) rotateZ(20deg);
     opacity: 0;
 }
+/* Pantalla de Login */
+.login-container {
+    text-align: center;
+    background: white;
+    padding: 3rem;
+    border-radius: 16px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+}
+
+.google-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: white;
+    border: 1px solid #ddd;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1rem;
+    margin-top: 20px;
+    transition: all 0.2s;
+}
+
+.google-btn:hover {
+    background: #f8f9fa;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+/* Cabecera de usuario */
+.user-info {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-bottom: 20px;
+    font-size: 0.9rem;
+}
+
+.avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+}
+
+.logout-btn {
+    background: #fee2e2;
+    color: #ef4444;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+/* Utilidad para ocultar pantallas */
+.hidden {
+    display: none !important;
+}
+.task-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.task-creator {
+    font-size: 0.75rem;
+    color: #9ca3af;
+    margin-top: 4px;
+}
+.completed-info {
+    color: #10b981; /* Verde bonito */
+    display: block; /* Para que salte de línea si quieres, o usa <br> */
+    font-weight: 500;
+}

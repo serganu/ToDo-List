@@ -18,3 +18,14 @@ const app = initializeApp(firebaseConfig);
 
 // Inicializar y exportar la Base de Datos (Firestore)
 export const db = getFirestore(app);
+
+/* ... imports anteriores ... */
+import { getAuth, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+/* ... config ... */
+/* ... app ... */
+
+// Inicializar y exportar Auth y Proveedor
+export const auth = getAuth(app);
+export const provider = new GoogleAuthProvider();
+/* ... export const db ... */
