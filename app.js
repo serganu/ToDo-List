@@ -1,3 +1,17 @@
+// Importamos la conexión a la base de datos
+import { db } from './firebase-config.js';
+// Importamos las funciones mágicas de Firestore
+import { 
+    collection, 
+    addDoc, 
+    onSnapshot, 
+    deleteDoc, 
+    doc, 
+    updateDoc,
+    query, 
+    orderBy 
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
 // Esperamos a que el contenido de la página cargue
 document.addEventListener('DOMContentLoaded', () => {
     // 1. Seleccionamos los elementos del HTML que vamos a controlar
@@ -6,12 +20,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const taskList = document.getElementById('taskList');
     const emptyState = document.getElementById('emptyState');
     const filterBtns = document.querySelectorAll('.filter-btn');
+    
+    // Referencia a la colección de tareas en la base de datos
+    const tasksCollection = collection(db, "tareas");
 
     // Función reutilizable para crear la fila de la tarea
-    function createTaskElement(texto, completada = false) {
+    function createTaskElement(id, texto, completada = false) {
         // 1. Crear el elemento li
         const li = document.createElement('li');
         li.className = 'task-item';
+        // Guardamos el ID de Firebase en el elemento HTML para saber quién es
+        li.dataset.id = id; 
+        
         if (completada) {
             li.classList.add('completed');
         }
@@ -23,79 +43,81 @@ document.addEventListener('DOMContentLoaded', () => {
                 <button class="delete-btn" aria-label="Borrar">🗑️</button>
             </div>
         `;
-
-        // 3. Añadir la lógica de los botones (Event Listeners)
-        // --- AQUÍ PEGA TU LÓGICA DE CLICS ACTUAL ---
-        // (Copia aquí todo el código de addEventListener de deleteBtn, 
-        //  clickTimer, el click simple y el dblclick que ya tienes hecho)
         
-        // Añadimos funcionalidad al botón de borrar de esta tarea
+        // --- EVENTOS (Ahora hablan con Firestore) ---
+
+        // BORRAR TAREA
         const deleteBtn = li.querySelector('.delete-btn');
-        deleteBtn.addEventListener('click', (e) => {
+        deleteBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
-            
-            // 1. Añadimos la clase para que empiece la animación CSS
             li.classList.add('fall');
-            
-            // 2. Esperamos a que termine la animación antes de borrar de verdad
-            li.addEventListener('transitionend', () => {
-                li.remove();
-                checkEmptyState(); // Ahora sí revisamos si está vacío
-                saveData();       // Y guardamos
-            });
-        });
 
-        let clickTimer = null;
-        // Añadimos la funcionalidad de completado
-        li.addEventListener('click', () => {
-            if (clickTimer) return;
-            clickTimer = setTimeout(() => {
-                li.classList.toggle('completed'); // Le ponemos la clase a toda la fila
-                applyFilter();
-                clickTimer = null;
-                saveData();
-            }, 300);
-        });
-
-        li.addEventListener('dblclick', () => {
-            clearTimeout(clickTimer);
-            clickTimer = null;
-            const taskContent = li.querySelector('.task-content');
-            const nuevoTexto = prompt("Editar tarea:", taskContent.innerText);
-            if (nuevoTexto !== null && nuevoTexto.trim() !== "") {
-                taskContent.innerText = nuevoTexto;
+            // Importante: No borramos del HTML aquí.
+            // Le decimos a Firebase que borre. 
+            // Cuando Firebase lo haga, el "oyente" (onSnapshot) actualizará la lista.
+            try {
+                await deleteDoc(doc(db, "tareas", id));
+            } catch (error) {
+                console.error("Error al borrar:", error);
+                alert("Hubo un error al borrar la tarea");
             }
-            saveData();
+        });
+
+        // COMPLETAR TAREA (Toggle)
+        li.addEventListener('click', async () => {
+            // Le decimos a Firebase que cambie SOLO el campo 'completada'
+            try {
+                const nuevoEstado = !li.classList.contains('completed');
+                await updateDoc(doc(db, "tareas", id), {
+                    completada: nuevoEstado
+                });
+            } catch (error) {
+                console.error("Error al actualizar:", error);
+            }
+        });
+
+        // EDITAR TAREA (Doble Click)
+        li.addEventListener('dblclick', async () => {
+             const taskContent = li.querySelector('.task-content');
+             const nuevoTexto = prompt("Editar tarea:", taskContent.innerText);
+             
+             if (nuevoTexto !== null && nuevoTexto.trim() !== "") {
+                 try {
+                     await updateDoc(doc(db, "tareas", id), {
+                         texto: nuevoTexto
+                     });
+                 } catch (error) {
+                     console.error("Error al editar:", error);
+                 }
+             }
         });
 
         return li;
     }
-    // 2. Función para añadir una nueva tarea
-    function addTask() {
-        // Obtenemos el texto que escribió el usuario
-        const taskText = taskInput.value.trim();
 
-        // Si está vacío, no hacemos nada
+    // 2. Función para añadir una nueva tarea
+    async function addTask() {
+        const taskText = taskInput.value.trim();
         if (taskText === "") {
             alert("Por favor escribe una tarea 🎉");
             return;
         }
 
-        // Creamos el elemento HTML de la lista (li)
-        const li = createTaskElement(taskText,false);
-
-
-        // Agregamos la tarea a la lista (ul)
-        taskList.appendChild(li);
-        applyFilter();
-        // Limpiamos el input y devolvemos el foco para escribir otra
-        taskInput.value = "";
-        taskInput.focus();
-
-        // Verificamos si hay tareas para ocultar el mensaje de "vacío"
-        checkEmptyState();
-
-        saveData();
+        try {
+            // Guardamos en Firebase (Magia ✨)
+            await addDoc(tasksCollection, {
+                texto: taskText,
+                completada: false,
+                fechaCreacion: new Date() // Para ordenar luego
+            });
+            
+            // Limpiamos el input
+            taskInput.value = "";
+            taskInput.focus();
+        } catch (error) {
+            console.error("Error al añadir tarea: ", error);
+            alert("Error al guardar en la nube");
+        }
     }
 
     // 3. Función auxiliar para mostrar/ocultar el mensaje de lista vacía
@@ -151,33 +173,27 @@ document.addEventListener('DOMContentLoaded', () => {
         // (Opcional, pero queda pro: "No hay tareas completadas")
     }
 
-    function saveData() {
-        const todos = [];
-        // Buscamos todas las tareas actuales
-        document.querySelectorAll('.task-item').forEach(li => {
-            todos.push({
-                text: li.querySelector('.task-content').innerText,
-                completed: li.classList.contains('completed')
-            });
+    // 3. OYENTE EN TIEMPO REAL (El corazón de la app)
+    // Esto sustituye a loadData(). Se ejecuta AUTOMÁTICAMENTE 
+    // cada vez que algo cambia en la base de datos (incluso si lo cambia otra persona).
+    const q = query(tasksCollection, orderBy("fechaCreacion", "desc"));
+    
+    onSnapshot(q, (snapshot) => {
+        // 1. Limpiamos la lista actual para no duplicar
+        taskList.innerHTML = "";
+        
+        // 2. Recorremos los documentos que nos da Firebase
+        snapshot.forEach((doc) => {
+            const data = doc.data();
+            const li = createTaskElement(doc.id, data.texto, data.completada);
+            taskList.appendChild(li);
         });
-        // Guardamos en el navegador convertido a texto
-        localStorage.setItem('misTareas', JSON.stringify(todos));
-    }
-    // CARGAR: Leemos los datos y reconstruimos las tareas
-    function loadData() {
-        const datos = localStorage.getItem('misTareas');
-        if (datos) {
-            const todos = JSON.parse(datos); // Convertimos texto a Array
-            todos.forEach(tarea => {
-                const li = createTaskElement(tarea.text, tarea.completed);
-                taskList.appendChild(li);
-            });
-            checkEmptyState();
-        }
-        applyFilter();
-    }
 
-    loadData();
+        // 3. Actualizamos vista vacía y filtros
+        checkEmptyState();
+        applyFilter(); // Si tenías implementado el filtro
+    });
+
     // 5. Filtrado de Tareas
     filterBtns.forEach(btn => {
         btn.addEventListener('click', () => {
